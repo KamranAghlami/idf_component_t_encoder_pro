@@ -1,0 +1,46 @@
+name: CI/CD
+
+on:
+  push:
+  pull_request:
+    branches: ["develop"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        board_target: [esp32s3]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: GitHubAssistantBot Preprocess
+        id: preprocess_commits
+        if: success() || failure()
+        run: |
+          commits_json=$(cat <<EOL
+          ${{toJson(github.event.commits)}}
+          EOL
+          )
+
+          echo "commits=$(echo "$commits_json" | jq -c '[.[] | {message: .message, url: .url}]' || echo "[]")" >> $GITHUB_OUTPUT
+
+      - name: GitHubAssistantBot
+        if: success() || failure()
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: 'https://node-red.geeken.me/github_assistant_bot'
+          data: |
+            {
+              "key": "${{secrets.ASSISTANT_BOT_KEY}}",
+              "actor": "${{github.actor}}",
+              "platform": "${{matrix.board_target}}",
+              "changes": "https://github.com/${{github.repository}}/commit/${{github.sha}}",
+              "commits": ${{steps.preprocess_commits.outputs.commits}},
+              "event": "${{github.event_name}}",
+              "reference": "${{github.ref_name}}",
+              "report": "https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}",
+              "repository": "${{github.repository}}",
+              "status": "${{job.status}}"
+            }
